@@ -1,0 +1,12 @@
+node_modules
+.next
+out
+next-env.d.ts
+*.tsbuildinfo
+.env
+.env.local
+# 本地 MCP 配置含 token，不提交
+.kiro/settings/mcp.json
+# 运行时数据（首次启动自动生成种子数据）
+data/db.json
+data/*.tmp

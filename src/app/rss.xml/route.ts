@@ -1,4 +1,5 @@
 import { renderMarkdown } from "@/lib/markdown";
+import { recipeToMarkdown } from "@/lib/recipe";
 import { getSettings, latestArticles, listChannels } from "@/lib/repo";
 import { textResponse, xmlEscape } from "@/lib/feed";
 import { absUrl, articleUrl, SITE_URL, toChannelMap } from "@/lib/urls";
@@ -21,7 +22,7 @@ export async function GET() {
       <author>${xmlEscape(a.author)}</author>
       <pubDate>${new Date(a.publishedAt).toUTCString()}</pubDate>
       <description>${xmlEscape(a.summary)}</description>
-      <content:encoded><![CDATA[${renderMarkdown(a.content).replace(/]]>/g, "]]]]><![CDATA[>")}]]></content:encoded>
+      <content:encoded><![CDATA[${renderMarkdown(`${a.recipe ? `${recipeToMarkdown(a.recipe)}\n\n` : ""}${a.content}`).replace(/]]>/g, "]]]]><![CDATA[>")}]]></content:encoded>
     </item>`;
     })
     .join("\n");

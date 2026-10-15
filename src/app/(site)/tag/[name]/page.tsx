@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { JsonLd } from "@/components/JsonLd";
-import { Breadcrumb, RankList, SummaryList, toChannelMap } from "@/components/lists";
+import { Breadcrumb, RankList, RecipeGrid, toChannelMap } from "@/components/lists";
 import { allTags, articlesByTag, hotArticles, listChannels } from "@/lib/repo";
 import { breadcrumbLd } from "@/lib/seo";
 import { parseTagFile, tagUrl } from "@/lib/urls";
@@ -18,8 +18,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const tag = parseTagFile((await params).name);
   if (!tag) return {};
   return {
-    title: `${tag}相关新闻`,
-    description: `关于「${tag}」的最新新闻、资讯与深度报道。`,
+    title: `${tag}菜谱大全_${tag}的做法`,
+    description: `精选「${tag}」相关菜谱与做法教程，食材用量、详细步骤一看就会。`,
     keywords: [tag],
     alternates: { canonical: tagUrl(tag) },
   };
@@ -38,13 +38,13 @@ export default async function TagPage({ params }: Props) {
       <div className="layout-2col">
         <div className="col-main">
           <header className="channel-head">
-            <h1>{tag}</h1>
-            <p>共 {items.length} 篇相关报道</p>
+            <h1>#{tag}</h1>
+            <p>共 {items.length} 道相关菜谱</p>
           </header>
-          <SummaryList items={items} map={map} />
+          <RecipeGrid items={items} map={map} cols={3} />
         </div>
         <aside className="col-side">
-          <RankList items={hot} map={map} />
+          <RankList items={hot} map={map} title="🔥 热门菜谱" />
         </aside>
       </div>
     </>

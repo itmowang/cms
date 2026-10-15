@@ -1,5 +1,5 @@
 import { JsonLd } from "./JsonLd";
-import { Breadcrumb, Pagination, RankList, SummaryList, toChannelMap } from "./lists";
+import { Breadcrumb, Pagination, RankList, RecipeGrid, toChannelMap } from "./lists";
 import { hotArticles, listChannels, pagedChannelArticles } from "@/lib/repo";
 import { breadcrumbLd, itemListLd } from "@/lib/seo";
 import type { Channel } from "@/lib/types";
@@ -7,7 +7,7 @@ import { channelUrl } from "@/lib/urls";
 import { notFound } from "next/navigation";
 
 export async function ChannelListView({ channel, page }: { channel: Channel; page: number }) {
-  const [{ items, totalPages }, channels, hot] = await Promise.all([
+  const [{ items, totalPages, total }, channels, hot] = await Promise.all([
     pagedChannelArticles(channel.id, page),
     listChannels(),
     hotArticles(10, channel.id),
@@ -22,19 +22,22 @@ export async function ChannelListView({ channel, page }: { channel: Channel; pag
   return (
     <>
       <JsonLd data={breadcrumbLd(crumbs)} />
-      <JsonLd data={itemListLd(`${channel.name}频道`, items.map((a) => ({ a, c: channel })))} />
+      <JsonLd data={itemListLd(`${channel.name}菜谱`, items.map((a) => ({ a, c: channel })))} />
       <Breadcrumb items={page > 1 ? [...crumbs, { name: `第 ${page} 页` }] : [crumbs[0], { name: channel.name }]} />
+      <header className="channel-head">
+        <h1>
+          <span aria-hidden="true">{channel.icon} </span>
+          {channel.name}做法大全{page > 1 && <small>（第 {page} 页）</small>}
+        </h1>
+        <p>{channel.description} 共收录 {total} 道菜谱。</p>
+      </header>
       <div className="layout-2col">
         <div className="col-main">
-          <header className="channel-head">
-            <h1>{channel.name}{page > 1 && <small>（第 {page} 页）</small>}</h1>
-            <p>{channel.description}</p>
-          </header>
-          <SummaryList items={items} map={map} />
+          <RecipeGrid items={items} map={map} cols={3} />
           <Pagination page={page} totalPages={totalPages} urlOf={(p) => channelUrl(channel, p)} />
         </div>
         <aside className="col-side">
-          <RankList items={hot} map={map} title={`${channel.name}排行`} />
+          <RankList items={hot} map={map} title={`🔥 ${channel.name}热门`} />
         </aside>
       </div>
     </>

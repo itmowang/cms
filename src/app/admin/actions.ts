@@ -4,7 +4,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createSession, getAdminCredentials, safeEqual, SESSION_COOKIE, SESSION_TTL, verifySession } from "@/lib/auth";
 import * as svc from "@/lib/services";
-import type { Article, FriendLink } from "@/lib/types";
+import { textToIngredients, textToSteps } from "@/lib/recipe";
+import type { Article, FriendLink, RecipeInfo } from "@/lib/types";
 
 /* ---------------- 工具 ---------------- */
 
@@ -90,6 +91,19 @@ export async function saveArticleAction(fd: FormData) {
       isFocus: bool(fd, "isFocus"),
       status: fd.get("status") === "published" ? "published" : "draft",
       publishedAt: str(fd, "publishedAt", 30) || undefined,
+      // 未勾选「这是一道菜谱」时清除菜谱信息
+      recipe: bool(fd, "hasRecipe")
+        ? {
+            difficulty: str(fd, "difficulty", 4) as RecipeInfo["difficulty"],
+            prepMinutes: int(fd, "prepMinutes"),
+            cookMinutes: int(fd, "cookMinutes"),
+            servings: str(fd, "servings", 20),
+            flavor: str(fd, "flavor", 20),
+            ingredients: textToIngredients(String(fd.get("ingredients") ?? "")),
+            steps: textToSteps(String(fd.get("steps") ?? "")),
+            tips: str(fd, "tips", 1000),
+          }
+        : null,
     }),
   );
   redirect(`/admin/articles/${(article as Article).id}?ok=1`);
@@ -113,6 +127,7 @@ export async function saveChannelAction(fd: FormData) {
       keywords: str(fd, "keywords", 200),
       sort: int(fd, "sort"),
       showInNav: bool(fd, "showInNav"),
+      icon: str(fd, "icon", 8),
     }),
   );
   redirect("/admin/channels?ok=1");

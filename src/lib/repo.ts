@@ -130,7 +130,12 @@ export async function searchArticles(keyword: string, limit = 50): Promise<Artic
   const kw = keyword.trim().toLowerCase();
   if (!kw) return [];
   return published((await readDb()).articles)
-    .filter((a) => [a.title, a.summary, a.tags.join(" "), a.content].some((s) => s.toLowerCase().includes(kw)))
+    // 支持按食材搜索，如 "鸡蛋"、"五花肉"
+    .filter((a) =>
+      [a.title, a.summary, a.tags.join(" "), a.content, a.recipe?.ingredients.map((i) => i.name).join(" ") ?? ""].some((s) =>
+        s.toLowerCase().includes(kw),
+      ),
+    )
     .sort(byPublishedDesc)
     .slice(0, limit);
 }

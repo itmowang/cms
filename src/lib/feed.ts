@@ -1,6 +1,7 @@
 import type { Article, Channel } from "./types";
 import { absUrl, articleMdUrl, articleUrl, channelUrl } from "./urls";
 import { formatDate } from "./markdown";
+import { recipeToMarkdown } from "./recipe";
 
 export const xmlEscape = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
@@ -18,9 +19,19 @@ export function articleToMarkdown(a: Article, c: Channel, siteName: string): str
     `updated: ${a.updatedAt}`,
     `tags: [${a.tags.map((t) => JSON.stringify(t)).join(", ")}]`,
     `publisher: ${JSON.stringify(siteName)}`,
+    ...(a.recipe
+      ? [
+          "type: recipe",
+          `difficulty: ${JSON.stringify(a.recipe.difficulty)}`,
+          `prep_minutes: ${a.recipe.prepMinutes}`,
+          `cook_minutes: ${a.recipe.cookMinutes}`,
+          `servings: ${JSON.stringify(a.recipe.servings)}`,
+        ]
+      : []),
     "---",
   ].join("\n");
-  return `${fm}\n\n# ${a.title}\n\n> ${a.summary}\n\n${a.content.trim()}\n`;
+  const recipe = a.recipe ? `${recipeToMarkdown(a.recipe)}\n\n` : "";
+  return `${fm}\n\n# ${a.title}\n\n> ${a.summary}\n\n${recipe}${a.content.trim()}\n`;
 }
 
 /** llms.txt 中的一行 */

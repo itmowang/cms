@@ -3,8 +3,10 @@ import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { ChannelListView } from "@/components/ChannelListView";
 import { JsonLd } from "@/components/JsonLd";
-import { Breadcrumb, RankList, TitleList, toChannelMap } from "@/components/lists";
+import { Breadcrumb, Cover, RankList, RecipeGrid, toChannelMap } from "@/components/lists";
+import { RecipeView } from "@/components/RecipeView";
 import { ViewBeacon } from "@/components/ViewBeacon";
+import { formatMinutes, totalMinutes } from "@/lib/recipe";
 import { formatDate, markdownToText, renderMarkdown } from "@/lib/markdown";
 import {
   adjacentArticles,
@@ -68,7 +70,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   if (r.kind === "list") {
     return {
-      title: `${channel.name}频道_第${r.page}页`,
+      title: `${channel.name}做法大全_第${r.page}页`,
       description: channel.description,
       alternates: { canonical: channelUrl(channel, r.page) },
     };
@@ -76,11 +78,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const a = r.article;
   const url = articleUrl(a, channel);
-  const description = (a.summary || markdownToText(a.content)).slice(0, 150);
+  // 菜谱的 description 带上难度、耗时、主要食材，搜索结果里一眼看到关键信息
+  const rp = a.recipe;
+  const recipeHint = rp
+    ? `【${rp.difficulty}·${formatMinutes(totalMinutes(rp))}·${rp.servings}】主料：${rp.ingredients.slice(0, 4).map((i) => i.name).join("、")}。`
+    : "";
+  const description = (recipeHint + (a.summary || markdownToText(a.content))).slice(0, 150);
   return {
     title: `${a.title}_${channel.name}`,
     description,
-    keywords: a.tags,
+    keywords: rp ? [a.shortTitle || a.title, `${a.shortTitle || a.title}的做法`, ...a.tags] : a.tags,
     authors: [{ name: a.author }],
     alternates: {
       canonical: url,
@@ -114,14 +121,14 @@ export default async function ChannelFilePage({ params }: Props) {
   return <ArticleView article={r.article} channel={r.channel} />;
 }
 
+
 async function ArticleView({ article: a, channel }: { article: Article; channel: Channel }) {
-  const [settings, channels, related, adjacent, hot, latest] = await Promise.all([
+  const [settings, channels, related, adjacent, hot] = await Promise.all([
     getSettings(),
     listChannels(),
-    relatedArticles(a, 8),
+    relatedArticles(a, 6),
     adjacentArticles(a),
     hotArticles(10, channel.id),
-    latestArticles(10),
   ]);
   const map = toChannelMap(channels);
   const html = renderMarkdown(a.content);
@@ -136,43 +143,38 @@ async function ArticleView({ article: a, channel }: { article: Article; channel:
       <JsonLd data={articleLd(a, channel, settings)} />
       <JsonLd data={breadcrumbLd(crumbs)} />
       <ViewBeacon id={a.id} />
-      <Breadcrumb items={[crumbs[0], crumbs[1], { name: "正文" }]} />
+      <Breadcrumb items={[crumbs[0], crumbs[1], { name: a.shortTitle || a.title }]} />
 
       <div className="layout-2col">
-        <article className="col-main article" itemScope itemType="https://schema.org/NewsArticle">
+        <article className="col-main article">
           <header>
-            <h1 itemProp="headline">{a.title}</h1>
+            <h1>{a.title}</h1>
             <div className="article-meta">
-              <time dateTime={a.publishedAt} itemProp="datePublished">{formatDate(a.publishedAt)}</time>
-              <span>来源：{a.source}</span>
-              <span itemProp="author" itemScope itemType="https://schema.org/Person">
-                作者：<span itemProp="name">{a.author}</span>
-              </span>
-              <meta itemProp="dateModified" content={a.updatedAt} />
+              <span>👩‍🍳 {a.author}</span>
+              <time dateTime={a.publishedAt}>{formatDate(a.publishedAt, false)}</time>
+              <span>👀 {a.views} 人看过</span>
             </div>
           </header>
 
-          {a.summary && (
-            <section className="article-summary" aria-label="内容摘要">
-              <strong>摘要：</strong>
-              <span itemProp="description">{a.summary}</span>
+          <figure className="article-cover">
+            <Cover a={a} icon={channel.icon} className="cover big" />
+          </figure>
+
+          {a.summary && <p className="article-summary">{a.summary}</p>}
+
+          {a.recipe && <RecipeView recipe={a.recipe} />}
+
+          {a.content.trim() && (
+            <section className="recipe-section">
+              {a.recipe && <h2>📖 关于这道菜</h2>}
+              <div className="article-body" dangerouslySetInnerHTML={{ __html: html }} />
             </section>
           )}
 
-          {a.cover && (
-            <figure className="article-cover">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={a.cover} alt={a.title} itemProp="image" />
-            </figure>
-          )}
-
-          <div className="article-body" itemProp="articleBody" dangerouslySetInnerHTML={{ __html: html }} />
-
           {a.tags.length > 0 && (
             <div className="article-tags">
-              标签：
               {a.tags.map((t) => (
-                <Link key={t} href={tagUrl(t)} rel="tag">{t}</Link>
+                <Link key={t} href={tagUrl(t)} rel="tag">#{t}</Link>
               ))}
             </div>
           )}
@@ -180,28 +182,24 @@ async function ArticleView({ article: a, channel }: { article: Article; channel:
           <p className="article-source-note">
             本文地址：<a href={absUrl(articleUrl(a, channel))}>{absUrl(articleUrl(a, channel))}</a>
             {" · "}
-            <a href={articleMdUrl(a, channel)} type="text/markdown">纯文本版（Markdown）</a>
+            <a href={articleMdUrl(a, channel)} type="text/markdown">纯文本菜谱（Markdown）</a>
           </p>
 
-          <nav className="article-adjacent" aria-label="上一篇 / 下一篇">
-            <div>上一篇：{adjacent.newer ? <Link href={articleUrl(adjacent.newer, channel)}>{adjacent.newer.title}</Link> : "没有了"}</div>
-            <div>下一篇：{adjacent.older ? <Link href={articleUrl(adjacent.older, channel)}>{adjacent.older.title}</Link> : "没有了"}</div>
+          <nav className="article-adjacent" aria-label="上一道 / 下一道">
+            <div>上一道：{adjacent.newer ? <Link href={articleUrl(adjacent.newer, channel)}>{adjacent.newer.title}</Link> : "没有了"}</div>
+            <div>下一道：{adjacent.older ? <Link href={articleUrl(adjacent.older, channel)}>{adjacent.older.title}</Link> : "没有了"}</div>
           </nav>
 
           {related.length > 0 && (
             <section className="box">
-              <h2 className="box-title"><span>相关阅读</span></h2>
-              <TitleList items={related} map={map} />
+              <h2 className="box-title"><span>🍽️ 相关菜谱</span></h2>
+              <RecipeGrid items={related} map={map} cols={3} />
             </section>
           )}
         </article>
 
         <aside className="col-side">
-          <RankList items={hot} map={map} title={`${channel.name}热点`} />
-          <section className="box">
-            <h2 className="box-title"><span>最新资讯</span></h2>
-            <TitleList items={latest} map={map} showDate={false} />
-          </section>
+          <RankList items={hot} map={map} title={`🔥 ${channel.name}热门`} />
         </aside>
       </div>
     </>

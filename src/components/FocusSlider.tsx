@@ -8,14 +8,15 @@ export interface Slide {
   title: string;
   cover?: string;
   channel: string;
+  icon?: string;
 }
 
 const gradients = [
-  "linear-gradient(135deg,#b91c1c,#7f1d1d)",
-  "linear-gradient(135deg,#1d4ed8,#1e3a8a)",
-  "linear-gradient(135deg,#047857,#064e3b)",
-  "linear-gradient(135deg,#b45309,#78350f)",
-  "linear-gradient(135deg,#6d28d9,#4c1d95)",
+  "linear-gradient(135deg,#ff8fb1,#e75480)",
+  "linear-gradient(135deg,#ffb6c8,#f06292)",
+  "linear-gradient(135deg,#f8a5c2,#d6477e)",
+  "linear-gradient(135deg,#ffc3a0,#ff7aa2)",
+  "linear-gradient(135deg,#f9c5d1,#e86a92)",
 ];
 
 /**
@@ -57,7 +58,10 @@ export function FocusSlider({ slides }: { slides: Slide[] }) {
             // eslint-disable-next-line @next/next/no-img-element
             <img src={s.cover} alt={s.title} loading={i === 0 ? "eager" : "lazy"} />
           ) : (
-            <span className="focus-placeholder" aria-hidden="true">{s.channel}</span>
+            <span className="focus-placeholder" aria-hidden="true">
+              <span className="focus-ph-icon">{s.icon ?? "🍽️"}</span>
+              {s.channel}
+            </span>
           )}
           <span className="focus-caption">{s.title}</span>
         </Link>

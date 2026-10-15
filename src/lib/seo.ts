@@ -1,11 +1,12 @@
 import type { Article, Channel, SiteSettings } from "./types";
 import { absUrl, articleMdUrl, articleUrl, channelUrl, SITE_URL } from "./urls";
 import { markdownToText } from "./markdown";
+import { isoDuration, totalMinutes } from "./recipe";
 
 /**
  * 结构化数据（schema.org JSON-LD）：
- * 百度、Google、Bing 以及各类 AI 爬虫（GPTBot / ClaudeBot / PerplexityBot 等）
- * 都会解析，能准确拿到标题、作者、发布时间、正文、面包屑等语义信息。
+ * 菜谱页输出 Recipe 类型（Google / Bing 菜谱富结果、百度、AI 爬虫都能直接拿到
+ * 食材、步骤、时长、份量），普通文章输出 Article。
  */
 
 export function websiteLd(s: SiteSettings) {
@@ -27,7 +28,7 @@ export function websiteLd(s: SiteSettings) {
         },
       },
       {
-        "@type": "NewsMediaOrganization",
+        "@type": "Organization",
         "@id": `${SITE_URL}/#org`,
         name: s.name,
         url: SITE_URL,
@@ -53,27 +54,53 @@ export function breadcrumbLd(items: Array<{ name: string; url: string }>) {
 export function articleLd(a: Article, c: Channel, s: SiteSettings) {
   const url = absUrl(articleUrl(a, c));
   const text = markdownToText(a.content);
-  return {
+  const base = {
     "@context": "https://schema.org",
-    "@type": "NewsArticle",
-    "@id": `${url}#article`,
+    "@id": `${url}#main`,
     mainEntityOfPage: { "@type": "WebPage", "@id": url },
     url,
-    headline: a.title.slice(0, 110),
     description: a.summary,
-    articleSection: c.name,
     keywords: a.tags.join(","),
     inLanguage: "zh-CN",
     datePublished: a.publishedAt,
     dateModified: a.updatedAt,
-    wordCount: text.length,
     image: a.cover ? [absUrl(a.cover)] : [absUrl("/logo.svg")],
     author: { "@type": "Person", name: a.author || s.name },
-    publisher: { "@id": `${SITE_URL}/#org`, "@type": "NewsMediaOrganization", name: s.name, logo: { "@type": "ImageObject", url: absUrl("/logo.svg") } },
-    isAccessibleForFree: true,
+    publisher: { "@id": `${SITE_URL}/#org`, "@type": "Organization", name: s.name, logo: { "@type": "ImageObject", url: absUrl("/logo.svg") } },
     // 提供纯文本 Markdown 版本，方便 LLM 精准抽取
-    encoding: { "@type": "MediaObject", encodingFormat: "text/markdown", contentUrl: absUrl(articleMdUrl(a, c)) },
-    articleBody: text.slice(0, 5000),
+    subjectOf: { "@type": "MediaObject", encodingFormat: "text/markdown", contentUrl: absUrl(articleMdUrl(a, c)) },
+  };
+
+  const r = a.recipe;
+  if (!r) {
+    return { ...base, "@type": "Article", headline: a.title.slice(0, 110), articleSection: c.name, articleBody: text.slice(0, 5000) };
+  }
+
+  return {
+    ...base,
+    "@type": "Recipe",
+    name: a.shortTitle || a.title,
+    headline: a.title.slice(0, 110),
+    recipeCategory: c.name,
+    recipeCuisine: "中式",
+    prepTime: isoDuration(r.prepMinutes),
+    cookTime: isoDuration(r.cookMinutes),
+    totalTime: isoDuration(totalMinutes(r)),
+    recipeYield: r.servings,
+    recipeIngredient: r.ingredients.map((i) => `${i.name} ${i.amount}`),
+    recipeInstructions: r.steps.map((step, i) => ({
+      "@type": "HowToStep",
+      position: i + 1,
+      name: `第${i + 1}步`,
+      text: step,
+      url: `${url}#step-${i + 1}`,
+    })),
+    ...(r.tips ? { comment: { "@type": "Comment", text: r.tips } } : {}),
+    // 难度与口味没有标准字段，放在 additionalProperty 里供 AI 读取
+    additionalProperty: [
+      { "@type": "PropertyValue", name: "难度", value: r.difficulty },
+      ...(r.flavor ? [{ "@type": "PropertyValue", name: "口味", value: r.flavor }] : []),
+    ],
   };
 }
 

@@ -28,7 +28,7 @@ export function SiteHeader({ settings, channels }: { settings: SiteSettings; cha
         </Link>
         <form action="/search" method="get" className="search" role="search">
           <label htmlFor="site-search" className="sr-only">站内搜索</label>
-          <input id="site-search" name="q" type="search" placeholder="搜索新闻、话题" maxLength={50} />
+          <input id="site-search" name="q" type="search" placeholder="搜菜谱、食材，如：鸡蛋" maxLength={50} />
           <button type="submit">搜索</button>
         </form>
       </div>

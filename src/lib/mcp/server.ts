@@ -73,15 +73,33 @@ const articleFieldShape = {
   content: z.string().max(200_000).optional().describe("正文，Markdown 格式（不支持原始 HTML）"),
   cover: z.string().max(500).optional().describe("封面图 URL，http(s):// 或站内 / 开头"),
   author: z.string().max(50).optional(),
-  source: z.string().max(50).optional().describe("来源，如：本站、新华网"),
-  tags: z.array(z.string().max(20)).max(10).optional().describe("标签，最多 10 个"),
-  isHeadline: z.boolean().optional().describe("是否首页头条"),
+  source: z.string().max(50).optional().describe("来源，如：本站、某某美食博主"),
+  tags: z.array(z.string().max(20)).max(10).optional().describe("标签，最多 10 个，如：快手菜、下饭菜、鸡蛋"),
+  isHeadline: z.boolean().optional().describe("是否首页「今日推荐」"),
   isFocus: z.boolean().optional().describe("是否首页焦点图"),
   status: z.enum(["draft", "published"]).optional().describe("draft 草稿 / published 发布，默认 draft"),
   publishedAt: z
     .string()
     .optional()
     .describe("发布时间。ISO 8601，或 'YYYY-MM-DDTHH:mm'（按北京时间）。设为未来时间即定时发布"),
+  recipe: z
+    .object({
+      difficulty: z.enum(["简单", "中等", "较难"]).optional(),
+      prepMinutes: z.number().int().min(0).max(6000).optional().describe("准备时间（分钟）"),
+      cookMinutes: z.number().int().min(0).max(6000).optional().describe("烹饪时间（分钟）"),
+      servings: z.string().max(20).optional().describe("份量，如：2人份、12个"),
+      flavor: z.string().max(20).optional().describe("口味，如：酸甜、麻辣"),
+      ingredients: z
+        .array(z.object({ name: z.string().min(1).max(30), amount: z.string().max(30).describe("用量，如 300克、2个、适量") }))
+        .max(50)
+        .optional()
+        .describe("食材清单"),
+      steps: z.array(z.string().min(1).max(1000)).max(50).optional().describe("做法步骤，每项一步，不要带编号"),
+      tips: z.string().max(1000).optional().describe("小贴士"),
+    })
+    .nullable()
+    .optional()
+    .describe("菜谱结构化信息。新建菜谱时 ingredients 和 steps 必填；更新时只需传要改的子字段；传 null 变为普通文章"),
 };
 
 const channelFieldShape = {
@@ -91,17 +109,19 @@ const channelFieldShape = {
   keywords: z.string().max(200).optional().describe("频道关键词，逗号分隔"),
   sort: z.number().int().optional().describe("排序，越小越靠前"),
   showInNav: z.boolean().optional().describe("是否显示在顶部导航"),
+  icon: z.string().max(8).optional().describe("分类图标 emoji，如 🍰"),
 };
 
 /* ---------------- 构建 Server ---------------- */
 
 export function createMcpServer(scope: McpScope): McpServer {
   const server = new McpServer(
-    { name: "menhu-cms", title: "门户 CMS", version: "0.1.0" },
+    { name: "fenchu-recipes", title: "粉厨美食 CMS", version: "0.2.0" },
     {
       instructions:
-        `这是中文门户网站 CMS（${SITE_URL}）的 MCP 接口，当前权限：${scope === "admin" ? "管理员（可读写）" : "只读"}。\n` +
-        "常用流程：list_channels 获取频道 → search_articles / list_articles 查文章 → get_article 读全文。" +
+        `这是美食制作教程网站（${SITE_URL}）的 MCP 接口，当前权限：${scope === "admin" ? "管理员（可读写）" : "只读"}。\n` +
+        "内容以菜谱为主：频道 = 菜谱分类（家常菜、烘焙、甜品等），文章 = 菜谱，菜谱的食材、步骤、时长、难度在 recipe 字段中。\n" +
+        "常用流程：list_channels 获取分类 → search_articles（支持按菜名或食材搜索）/ list_articles → get_article 读完整菜谱。" +
         (scope === "admin"
           ? "\n写入：create_article 默认存为草稿，确认无误后用 set_article_status 发布。发布会自动刷新静态页并推送搜索引擎。删除操作不可恢复，执行前请与用户确认。"
           : ""),
@@ -127,7 +147,6 @@ export function createMcpServer(scope: McpScope): McpServer {
         stats: isAdmin ? stats : { channels: stats.channels, published: stats.published },
         endpoints: {
           sitemap: `${SITE_URL}/sitemap.xml`,
-          newsSitemap: `${SITE_URL}/news-sitemap.xml`,
           rss: `${SITE_URL}/rss.xml`,
           llms: `${SITE_URL}/llms.txt`,
           llmsFull: `${SITE_URL}/llms-full.txt`,
@@ -272,31 +291,35 @@ export function createMcpServer(scope: McpScope): McpServer {
   /* ===== 提示词模板 ===== */
 
   server.registerPrompt(
-    "write_news",
+    "write_recipe",
     {
-      title: "撰写新闻稿",
-      description: "根据主题和素材撰写一篇符合门户规范、对 SEO 和 AI 抓取友好的新闻稿",
+      title: "撰写菜谱教程",
+      description: "根据菜名和要点撰写一篇步骤清晰、用量精确、对 SEO 和 AI 抓取友好的菜谱教程",
       argsSchema: {
-        topic: z.string().describe("新闻主题"),
-        materials: z.string().optional().describe("素材、要点或原始资料"),
-        channel: z.string().optional().describe("目标频道名称，如：科技"),
+        dish: z.string().describe("菜名，如：糖醋排骨"),
+        notes: z.string().optional().describe("要点、个人做法、特殊要求（如：少油、空气炸锅版）"),
+        channel: z.string().optional().describe("目标分类名称，如：家常菜"),
       },
     },
-    ({ topic, materials, channel }) => ({
+    ({ dish, notes, channel }) => ({
       messages: [
         {
           role: "user",
           content: {
             type: "text",
             text: [
-              `请为门户网站${channel ? `「${channel}」频道` : ""}撰写一篇新闻稿，主题：${topic}。`,
-              materials ? `\n素材：\n${materials}` : "",
+              `请为美食教程网站${channel ? `「${channel}」分类` : ""}写一篇「${dish}」的菜谱教程。`,
+              notes ? `\n要点：\n${notes}` : "",
               "\n要求：",
-              "1. 标题 20-30 字，包含核心关键词，不做标题党；",
-              "2. 摘要 80-150 字，一段话讲清 5W（何时、何地、何人、何事、为何）；",
-              "3. 正文使用 Markdown，导语先行，用 ## 小标题分 2-4 节，段落简短；事实与观点分开，引用注明出处；",
-              "4. 给出 3-5 个标签；",
-              "5. 不要编造数据、人名、机构和引语，素材不足处用【待补充】标注。",
+              `1. 标题用「${dish}的做法」或「${dish}的家常做法」这类搜索常用说法，shortTitle 填菜名；`,
+              "2. 摘要 50-120 字，说清口感特点和成功关键，可以单独作为 AI 回答片段；",
+              "3. recipe 字段：difficulty（简单/中等/较难）、prepMinutes、cookMinutes、servings、flavor；",
+              "4. ingredients 用量尽量精确到克/毫升/个，调味料可写「适量」；主料在前、调料在后；",
+              "5. steps 每步一个动作，写清火候、时间和判断标准（如「炸至金黄」「筷子能插透」），不要带编号，5-8 步为宜；",
+              "6. tips 写 1-2 条最容易失败的地方；",
+              "7. content 用 Markdown 写菜品介绍和搭配建议，不要重复食材和步骤；",
+              "8. 给出 3-5 个标签（如：快手菜、下饭菜、主要食材名）；",
+              "9. 涉及食品安全的地方（如生熟分开、肉类熟透）要提醒，不要编造营养功效。",
               isAdmin
                 ? "\n完成后先调用 list_channels 确认 channelId，再调用 create_article 以草稿（status=draft）保存，并把文章 ID 告诉我。"
                 : "",
@@ -310,9 +333,9 @@ export function createMcpServer(scope: McpScope): McpServer {
   server.registerPrompt(
     "seo_review",
     {
-      title: "文章 SEO 体检",
-      description: "读取指定文章，从搜索引擎与 AI 引用角度给出优化建议",
-      argsSchema: { id: z.string().describe("文章 ID") },
+      title: "菜谱 SEO 体检",
+      description: "读取指定菜谱，从搜索引擎、菜谱富结果与 AI 引用角度给出优化建议",
+      argsSchema: { id: z.string().describe("菜谱（文章）ID") },
     },
     ({ id }) => ({
       messages: [
@@ -322,7 +345,8 @@ export function createMcpServer(scope: McpScope): McpServer {
             type: "text",
             text:
               `请先调用 get_article（id=${id}, format=json）读取文章，然后从以下方面评估并给出可直接替换的修改建议：\n` +
-              "标题（长度、关键词前置）、摘要（是否可独立成为 AI 答案片段）、小标题结构、首段信息密度、标签、内链机会、事实是否有出处。" +
+              "标题（是否含「XX的做法」等搜索常用词）、摘要（是否可独立成为 AI 答案片段）、recipe 字段是否完整（时长、份量、用量是否精确）、" +
+              "步骤是否每步一个动作且有判断标准、小贴士、标签、是否缺封面图（菜谱富结果需要图片）、内链机会。" +
               (isAdmin ? "\n给出建议后询问我是否需要用 update_article 应用修改。" : ""),
           },
         },
@@ -337,8 +361,8 @@ export function createMcpServer(scope: McpScope): McpServer {
   server.registerTool(
     "create_article",
     {
-      title: "新建文章",
-      description: "新建文章，默认保存为草稿。status=published 会立即发布（或在 publishedAt 到达时发布），并刷新静态页、推送搜索引擎",
+      title: "新建菜谱 / 文章",
+      description: "新建菜谱（带 recipe 字段）或普通文章，默认保存为草稿。status=published 会立即发布（或在 publishedAt 到达时发布），并刷新静态页、推送搜索引擎",
       inputSchema: articleFieldShape,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },

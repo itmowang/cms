@@ -2,7 +2,8 @@ import "server-only";
 import { revalidatePath } from "next/cache";
 import { pushUrls } from "./push";
 import * as repo from "./repo";
-import type { Article, ArticleStatus, Channel, FriendLink, SiteSettings } from "./types";
+import { DIFFICULTIES } from "./recipe";
+import type { Article, ArticleStatus, Channel, FriendLink, RecipeInfo, SiteSettings } from "./types";
 import { absUrl, articleUrl, RESERVED_SLUGS } from "./urls";
 
 /**
@@ -50,6 +51,38 @@ export interface ArticleFields {
   isFocus?: boolean;
   status?: ArticleStatus;
   publishedAt?: string;
+  /** 传 null 表示清除菜谱信息（变为普通文章） */
+  recipe?: Partial<RecipeInfo> | null;
+}
+
+const clampInt = (v: unknown, min: number, max: number) => {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : min;
+};
+
+/** 校验并规范化菜谱字段；局部更新时与旧值合并 */
+export function normalizeRecipe(input: Partial<RecipeInfo> | null | undefined, old?: RecipeInfo): RecipeInfo | undefined {
+  if (input === null) return undefined;
+  if (input === undefined) return old;
+  const m = { ...old, ...input };
+  const ingredients = (m.ingredients ?? [])
+    .map((i) => ({ name: clip(i?.name, 30), amount: clip(i?.amount, 30) || "适量" }))
+    .filter((i) => i.name)
+    .slice(0, 50);
+  const steps = (m.steps ?? []).map((s) => clip(s, 1000)).filter(Boolean).slice(0, 50);
+  if (!ingredients.length) throw new ValidationError("菜谱至少需要 1 种食材");
+  if (!steps.length) throw new ValidationError("菜谱至少需要 1 个做法步骤");
+  const difficulty = DIFFICULTIES.includes(m.difficulty as RecipeInfo["difficulty"]) ? (m.difficulty as RecipeInfo["difficulty"]) : "简单";
+  return {
+    difficulty,
+    prepMinutes: clampInt(m.prepMinutes, 0, 6000),
+    cookMinutes: clampInt(m.cookMinutes, 0, 6000),
+    servings: clip(m.servings, 20) || "2人份",
+    flavor: clip(m.flavor, 20) || undefined,
+    ingredients,
+    steps,
+    tips: clip(m.tips, 1000) || undefined,
+  };
 }
 
 /**
@@ -76,13 +109,14 @@ export async function upsertArticle(id: number | undefined, f: ArticleFields): P
     summary: clip(f.summary ?? old?.summary, 500),
     content: String(f.content ?? old?.content ?? "").slice(0, 200_000),
     cover: cover || undefined,
-    author: clip(f.author ?? old?.author, 50) || "本网编辑",
+    author: clip(f.author ?? old?.author, 50) || "粉厨小编",
     source: clip(f.source ?? old?.source, 50) || "本站",
     tags: f.tags !== undefined ? parseTags(f.tags) : old?.tags ?? [],
     isHeadline: f.isHeadline ?? old?.isHeadline ?? false,
     isFocus: f.isFocus ?? old?.isFocus ?? false,
     status: f.status ?? old?.status ?? "draft",
     publishedAt: f.publishedAt !== undefined ? parsePublishTime(f.publishedAt) : old?.publishedAt ?? new Date().toISOString(),
+    recipe: normalizeRecipe(f.recipe, old?.recipe),
   });
 
   refreshSite();
@@ -108,6 +142,7 @@ export interface ChannelFields {
   keywords?: string;
   sort?: number;
   showInNav?: boolean;
+  icon?: string;
 }
 
 export async function upsertChannel(id: number | undefined, f: ChannelFields): Promise<Channel> {
@@ -129,6 +164,7 @@ export async function upsertChannel(id: number | undefined, f: ChannelFields): P
       keywords: clip(f.keywords ?? old?.keywords, 200),
       sort: Number.isFinite(f.sort) ? Number(f.sort) : old?.sort ?? 99,
       showInNav: f.showInNav ?? old?.showInNav ?? true,
+      icon: clip(f.icon ?? old?.icon, 8) || undefined,
     });
     refreshSite();
     return channel;

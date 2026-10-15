@@ -6,7 +6,6 @@ export default async function Dashboard() {
   const s = await stats();
   const seoLinks = [
     ["sitemap.xml", "网站地图（提交给百度 / Google / Bing 站长平台）"],
-    ["news-sitemap.xml", "新闻 Sitemap（48 小时内文章）"],
     ["robots.txt", "爬虫规则（已放行主流 AI 爬虫）"],
     ["rss.xml", "RSS 全文订阅"],
     ["llms.txt", "AI 站点导览（llmstxt.org 规范）"],

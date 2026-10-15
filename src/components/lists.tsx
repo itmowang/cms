@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Article } from "@/lib/types";
 import { articleUrl, channelUrl, type ChannelMap } from "@/lib/urls";
 import { formatDate, formatMd } from "@/lib/markdown";
+import { formatMinutes, totalMinutes } from "@/lib/recipe";
 
 export { toChannelMap } from "@/lib/urls";
 
@@ -10,7 +11,57 @@ function href(a: Article, map: ChannelMap) {
   return c ? articleUrl(a, c) : "#";
 }
 
-/** 门户风格密集标题列表 */
+const placeholderBg = [
+  "linear-gradient(135deg,#ffd1dc,#ff9fb8)",
+  "linear-gradient(135deg,#ffe0e9,#f7a8c4)",
+  "linear-gradient(135deg,#fde2f3,#f4a6d7)",
+  "linear-gradient(135deg,#ffe4e1,#ffb3a7)",
+];
+
+/** 封面图；没有封面时显示粉色渐变 + 分类图标 */
+export function Cover({ a, icon, className = "cover" }: { a: Article; icon?: string; className?: string }) {
+  if (a.cover) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img className={className} src={a.cover} alt={a.title} loading="lazy" />;
+  }
+  return (
+    <span className={`${className} cover-ph`} style={{ background: placeholderBg[a.id % placeholderBg.length] }} aria-hidden="true">
+      <span>{icon ?? "🍽️"}</span>
+    </span>
+  );
+}
+
+/** 菜谱卡片网格（美食站主力展示形式） */
+export function RecipeGrid({ items, map, cols = 4 }: { items: Article[]; map: ChannelMap; cols?: 3 | 4 }) {
+  return (
+    <ul className={`recipe-grid cols-${cols}`}>
+      {items.map((a) => {
+        const c = map.get(a.channelId);
+        return (
+          <li key={a.id}>
+            <Link href={href(a, map)} className="recipe-card">
+              <Cover a={a} icon={c?.icon} />
+              <span className="recipe-card-body">
+                <strong>{a.shortTitle || a.title}</strong>
+                {a.recipe ? (
+                  <span className="recipe-card-meta">
+                    <span className={`diff diff-${a.recipe.difficulty}`}>{a.recipe.difficulty}</span>
+                    <span>⏱ {formatMinutes(totalMinutes(a.recipe))}</span>
+                    <span>👀 {a.views}</span>
+                  </span>
+                ) : (
+                  <span className="recipe-card-meta">{c?.name}</span>
+                )}
+              </span>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** 密集标题列表 */
 export function TitleList({ items, map, showDate = true, short = false }: { items: Article[]; map: ChannelMap; showDate?: boolean; short?: boolean }) {
   return (
     <ul className="title-list">
@@ -49,19 +100,17 @@ export function SummaryList({ items, map }: { items: Article[]; map: ChannelMap 
         const c = map.get(a.channelId);
         return (
           <li key={a.id}>
-            {a.cover && (
-              <Link href={href(a, map)} className="thumb" tabIndex={-1} aria-hidden="true">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={a.cover} alt="" loading="lazy" />
-              </Link>
-            )}
+            <Link href={href(a, map)} className="thumb" tabIndex={-1} aria-hidden="true">
+              <Cover a={a} icon={c?.icon} />
+            </Link>
             <div>
               <h3><Link href={href(a, map)}>{a.title}</Link></h3>
               <p>{a.summary}</p>
               <div className="meta">
                 {c && <Link href={channelUrl(c)}>{c.name}</Link>}
-                <time dateTime={a.publishedAt}>{formatDate(a.publishedAt)}</time>
-                <span>{a.source}</span>
+                {a.recipe && <span>难度：{a.recipe.difficulty}</span>}
+                {a.recipe && <span>耗时：{formatMinutes(totalMinutes(a.recipe))}</span>}
+                <time dateTime={a.publishedAt}>{formatDate(a.publishedAt, false)}</time>
               </div>
             </div>
           </li>

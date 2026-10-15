@@ -16,11 +16,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const c = await getChannelBySlug((await params).channel);
   if (!c) return {};
   return {
-    title: `${c.name}频道`,
+    title: `${c.name}做法大全_${c.name}菜谱`,
     description: c.description,
     keywords: c.keywords,
     alternates: { canonical: channelUrl(c) },
-    openGraph: { type: "website", title: `${c.name}频道`, description: c.description, url: channelUrl(c) },
+    openGraph: { type: "website", title: `${c.name}做法大全`, description: c.description, url: channelUrl(c) },
   };
 }
 

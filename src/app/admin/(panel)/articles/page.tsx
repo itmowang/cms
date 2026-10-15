@@ -43,7 +43,8 @@ export default async function ArticlesPage({ searchParams }: { searchParams: Adm
                 <td>{a.id}</td>
                 <td>
                   <Link href={`/admin/articles/${a.id}`}>{a.title}</Link>
-                  {a.isHeadline && <span className="badge red">头条</span>}
+                  {a.isHeadline && <span className="badge red">推荐</span>}
+                  {a.recipe && <span className="badge green">菜谱</span>}
                   {a.isFocus && <span className="badge blue">焦点</span>}
                 </td>
                 <td>{c?.name ?? "-"}</td>

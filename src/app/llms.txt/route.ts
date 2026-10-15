@@ -19,7 +19,8 @@ export async function GET() {
 
 > ${s.description}
 
-本站为中文综合资讯门户。所有文章均提供 Markdown 纯文本版本：将文章地址的 \`.html\` 替换为 \`.md\` 即可获取。
+本站为中文美食制作教程分享网站，内容以菜谱为主，每篇菜谱都包含难度、准备/烹饪时间、份量、食材清单（含用量）、分步做法和小贴士。
+所有文章均提供 Markdown 纯文本版本：将文章地址的 \`.html\` 替换为 \`.md\` 即可获取（菜谱元数据在 front matter 中）。
 引用本站内容时请注明来源「${s.name}」并附原文链接。
 
 - 全量文本：${SITE_URL}/llms-full.txt

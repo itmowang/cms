@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { JsonLd } from "@/components/JsonLd";
-import { Breadcrumb, RankList, RecipeGrid, toChannelMap } from "@/components/lists";
+import { Breadcrumb, RankList, SummaryList, toChannelMap } from "@/components/lists";
 import { allTags, articlesByTag, hotArticles, listChannels } from "@/lib/repo";
 import { breadcrumbLd } from "@/lib/seo";
 import { parseTagFile, tagUrl } from "@/lib/urls";
@@ -38,10 +38,10 @@ export default async function TagPage({ params }: Props) {
       <div className="layout-2col">
         <div className="col-main">
           <header className="channel-head">
-            <h1>#{tag}</h1>
+            <h1>{tag}相关菜谱</h1>
             <p>共 {items.length} 道相关菜谱</p>
           </header>
-          <RecipeGrid items={items} map={map} cols={3} />
+          <SummaryList items={items} map={map} />
         </div>
         <aside className="col-side">
           <RankList items={hot} map={map} title="🔥 热门菜谱" />

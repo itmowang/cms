@@ -21,7 +21,8 @@ export function SiteFooter({ settings, channels }: { settings: SiteSettings; cha
         <Link href="/rss.xml" prefetch={false}>RSS</Link>
       </div>
       <div className="wrap footer-copy">
-        <p>© {new Date().getFullYear()} {settings.copyright}</p>
+        <p>本站菜谱及图文内容仅供参考，烹饪时请注意用火用电安全，过敏体质请留意食材成分。</p>
+        <p>Copyright © {new Date().getFullYear()} {settings.copyright}</p>
         {settings.icp && (
           <p>
             <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener nofollow">{settings.icp}</a>

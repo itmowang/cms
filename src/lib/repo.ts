@@ -105,6 +105,21 @@ export async function allTags(): Promise<string[]> {
   return [...set];
 }
 
+/** 按使用次数排序的热门标签（导航热词、标签云） */
+export async function topTags(limit = 20): Promise<Array<{ tag: string; count: number }>> {
+  const db = await readDb();
+  // 与分类同名的标签（如「家常菜」）对导航没有增量，排除掉
+  const channelNames = new Set(db.channels.map((c) => c.name));
+  const counter = new Map<string, number>();
+  published(db.articles).forEach((a) =>
+    a.tags.filter((t) => !channelNames.has(t)).forEach((t) => counter.set(t, (counter.get(t) ?? 0) + 1)),
+  );
+  return [...counter.entries()]
+    .map(([tag, count]) => ({ tag, count }))
+    .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag, "zh-CN"))
+    .slice(0, limit);
+}
+
 export async function relatedArticles(article: Article, limit = 8): Promise<Article[]> {
   const list = published((await readDb()).articles).filter((a) => a.id !== article.id);
   const score = (a: Article) =>

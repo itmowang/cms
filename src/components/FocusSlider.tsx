@@ -11,13 +11,8 @@ export interface Slide {
   icon?: string;
 }
 
-const gradients = [
-  "linear-gradient(135deg,#ff8fb1,#e75480)",
-  "linear-gradient(135deg,#ffb6c8,#f06292)",
-  "linear-gradient(135deg,#f8a5c2,#d6477e)",
-  "linear-gradient(135deg,#ffc3a0,#ff7aa2)",
-  "linear-gradient(135deg,#f9c5d1,#e86a92)",
-];
+/** 无封面时的占位底色 */
+const gradients = ["#b8475f", "#a5623f", "#8c5a6e", "#9b4a4a", "#7d6450"];
 
 /**
  * 焦点图轮播。所有幻灯片都在服务端 HTML 中完整输出（只是视觉上隐藏），
@@ -58,10 +53,7 @@ export function FocusSlider({ slides }: { slides: Slide[] }) {
             // eslint-disable-next-line @next/next/no-img-element
             <img src={s.cover} alt={s.title} loading={i === 0 ? "eager" : "lazy"} />
           ) : (
-            <span className="focus-placeholder" aria-hidden="true">
-              <span className="focus-ph-icon">{s.icon ?? "🍽️"}</span>
-              {s.channel}
-            </span>
+            <span className="focus-placeholder" aria-hidden="true">{s.channel}</span>
           )}
           <span className="focus-caption">{s.title}</span>
         </Link>
@@ -76,7 +68,9 @@ export function FocusSlider({ slides }: { slides: Slide[] }) {
             aria-label={`第 ${i + 1} 张：${s.title}`}
             onClick={() => setIdx(i)}
             className={i === idx ? "on" : undefined}
-          />
+          >
+            {i + 1}
+          </button>
         ))}
       </div>
     </section>

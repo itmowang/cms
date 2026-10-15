@@ -87,6 +87,7 @@ export function TitleList({
 
 /** 排行榜（带序号，前三名高亮） */
 export function RankList({ items, map, title = "热门菜谱排行" }: { items: Article[]; map: ChannelMap; title?: string }) {
+  if (!items.length) return null;
   return (
     <section className="box">
       <h2 className="box-title"><span>{title}</span></h2>
@@ -105,6 +106,7 @@ export function RankList({ items, map, title = "热门菜谱排行" }: { items: 
 
 /** 标签云 */
 export function TagCloud({ tags, title = "热门标签" }: { tags: Array<{ tag: string; count: number }>; title?: string }) {
+  if (!tags.length) return null;
   return (
     <section className="box">
       <h2 className="box-title"><span>{title}</span></h2>

@@ -32,7 +32,7 @@ export async function ChannelListView({ channel, page }: { channel: Channel; pag
             <h1>{channel.name}做法大全{page > 1 && <small>（第 {page} 页）</small>}</h1>
             <p>{channel.description}共收录 {total} 道菜谱。</p>
           </header>
-          <SummaryList items={items} map={map} />
+          {items.length ? <SummaryList items={items} map={map} /> : <p className="empty">该分类下暂无菜谱。</p>}
           <Pagination page={page} totalPages={totalPages} urlOf={(p) => channelUrl(channel, p)} />
         </div>
         <aside className="col-side">

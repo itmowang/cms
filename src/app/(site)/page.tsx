@@ -29,6 +29,23 @@ export default async function HomePage() {
   const blocks = await Promise.all(channels.map(async (c) => ({ c, items: await latestArticles(7, c.id) })));
   const [lead, ...subPicks] = picks;
 
+  // 还没有发布任何菜谱时的空状态
+  if (!latest.length) {
+    return (
+      <>
+        <JsonLd data={websiteLd(settings)} />
+        <h1 className="sr-only">{settings.name} - {settings.slogan}</h1>
+        <nav className="cat-bar" aria-label="菜谱分类">
+          <strong>菜谱分类</strong>
+          {channels.map((c) => (
+            <Link key={c.id} href={channelUrl(c)}>{c.name}</Link>
+          ))}
+        </nav>
+        <p className="empty">暂无菜谱，敬请期待。</p>
+      </>
+    );
+  }
+
   return (
     <>
       <JsonLd data={websiteLd(settings)} />

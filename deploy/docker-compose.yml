@@ -1,0 +1,86 @@
+# 服务器上位于 /opt/menhu-cms/docker-compose.yml，由 deploy.sh 每次部署时同步。
+# APP_TAG / SITE_ADDRESS / PG_PASSWORD 来自同目录的 .env（由 remote.sh 根据 app.env 自动生成，不要手改）。
+name: menhu-cms
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: menhu
+      POSTGRES_DB: menhu
+      # 仅首次初始化数据目录时生效；之后改密码需进库 ALTER USER
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?PG_PASSWORD 未设置}
+    # 按 1.6G 内存的小机器调优
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - effective_cache_size=512MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=50
+    shm_size: 128mb
+    volumes:
+      # 线上数据库：宿主机目录，升级 / 重建容器都不会动它
+      - ./pgdata:/var/lib/postgresql/data
+    ports:
+      # 只监听本机：供构建期预渲染和 SSH 隧道管理使用，不对公网开放
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U menhu -d menhu"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  app:
+    image: ${IMAGE_NAME:-menhu-cms}:${APP_TAG:?APP_TAG 未设置}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    env_file: ./app.env
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+      DATABASE_URL: postgres://menhu:${PG_PASSWORD}@db:5432/menhu
+    volumes:
+      # 旧版 JSON 存储目录：新版本不再使用，保留挂载以便回滚到 JSON 版本时数据仍在
+      - ./data:/app/data
+    ports:
+      # 只监听本机，外部流量统一走 Caddy
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on: [app]
+    environment:
+      # 配置了域名则自动申请 HTTPS 证书；否则仅 HTTP :80
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+      PRIMARY_HOST: ${PRIMARY_HOST:-}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  caddy_data:
+  caddy_config:

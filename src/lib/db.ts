@@ -1,79 +1,40 @@
 import "server-only";
-import { promises as fs } from "node:fs";
-import path from "node:path";
-import { createSeed } from "./seed";
-import type { Database } from "./types";
+import { Pool, type QueryResultRow } from "pg";
 
 /**
- * 轻量 JSON 文件存储：零依赖、开箱即用。
- * 所有读写都经过本模块，后续如需切换到 MySQL / PostgreSQL，只需替换本文件 + repo.ts。
+ * PostgreSQL 连接池。所有 SQL 都经过本模块 + repo.ts。
+ * 表结构见 db/migrations/*.sql，由 db/migrate.sh 执行（部署脚本自动调用）。
  */
-const DATA_DIR = path.join(process.cwd(), "data");
-const DB_FILE = path.join(DATA_DIR, "db.json");
+const g = globalThis as unknown as { __menhuPool?: Pool };
 
-let cache: { mtimeMs: number; data: Database } | null = null;
-let writeChain: Promise<unknown> = Promise.resolve();
-
-let ensuring: Promise<void> | null = null;
-
-/** 只初始化一次，避免首次启动时并发请求同时写种子数据 */
-function ensureFile(): Promise<void> {
-  ensuring ??= (async () => {
-    try {
-      await fs.access(DB_FILE);
-    } catch {
-      await fs.mkdir(DATA_DIR, { recursive: true });
-      await atomicWrite(createSeed());
-    }
-  })().catch((e) => {
-    ensuring = null;
-    throw e;
-  });
-  return ensuring;
-}
-
-let tmpSeq = 0;
-
-async function atomicWrite(data: Database): Promise<void> {
-  const tmp = `${DB_FILE}.${process.pid}.${Date.now()}.${++tmpSeq}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(data, null, 2), "utf8");
-  // Windows 下目标文件被其他进程短暂占用时 rename 会报 EPERM/EBUSY，重试几次
-  for (let i = 0; ; i++) {
-    try {
-      await fs.rename(tmp, DB_FILE);
-      return;
-    } catch (e) {
-      const code = (e as NodeJS.ErrnoException).code;
-      if (i >= 5 || (code !== "EPERM" && code !== "EBUSY" && code !== "EACCES")) {
-        await fs.rm(tmp, { force: true });
-        throw e;
-      }
-      await new Promise((r) => setTimeout(r, 30 * (i + 1)));
-    }
+function pool(): Pool {
+  if (!g.__menhuPool) {
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) throw new Error("未配置 DATABASE_URL（例如 postgres://menhu:menhu@127.0.0.1:5432/menhu）");
+    const p = new Pool({
+      connectionString,
+      max: Number(process.env.PG_POOL_MAX) || 10,
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 5_000,
+    });
+    // 空闲连接断开（如数据库重启）不应让进程崩溃，下次查询会自动重连
+    p.on("error", (e) => console.error("[db] 空闲连接异常：", e.message));
+    // 开发环境热更新会重复执行模块，挂在 globalThis 上避免连接泄漏
+    g.__menhuPool = p;
   }
+  return g.__menhuPool;
 }
 
-export async function readDb(): Promise<Database> {
-  await ensureFile();
-  const stat = await fs.stat(DB_FILE);
-  if (cache && cache.mtimeMs === stat.mtimeMs) return cache.data;
-  const raw = await fs.readFile(DB_FILE, "utf8");
-  const data = JSON.parse(raw) as Database;
-  cache = { mtimeMs: stat.mtimeMs, data };
-  return data;
+/** 参数化查询，返回行数组。永远使用 $1、$2 占位符，不要拼接用户输入 */
+export async function query<T extends QueryResultRow>(text: string, params: unknown[] = []): Promise<T[]> {
+  return (await pool().query<T>(text, params)).rows;
 }
 
-/** 串行化写操作，避免并发请求互相覆盖 */
-export function writeDb<T>(mutator: (db: Database) => T | Promise<T>): Promise<T> {
-  const run = async () => {
-    // 写之前总是从磁盘读取最新数据，并深拷贝避免污染读缓存
-    const db = structuredClone(await readDb());
-    const result = await mutator(db);
-    await atomicWrite(db);
-    cache = null;
-    return result;
-  };
-  const next = writeChain.then(run, run);
-  writeChain = next.catch(() => undefined);
-  return next;
+export async function queryOne<T extends QueryResultRow>(text: string, params: unknown[] = []): Promise<T | undefined> {
+  return (await query<T>(text, params))[0];
+}
+
+/** PostgreSQL 错误码（23505 唯一约束冲突、23503 外键约束等） */
+export function pgCode(e: unknown): string | undefined {
+  return typeof e === "object" && e !== null && "code" in e ? String((e as { code: unknown }).code) : undefined;
 }

@@ -1,0 +1,9 @@
+{$SITE_ADDRESS::80} {
+	encode zstd gzip
+
+	# 多个域名时统一跳转到主域名（PRIMARY_HOST 取自 NEXT_PUBLIC_SITE_URL，未绑定域名时为空、不跳转）
+	@alias expression `"{$PRIMARY_HOST}" != "" && {host} != "{$PRIMARY_HOST}"`
+	redir @alias https://{$PRIMARY_HOST}{uri} 308
+
+	reverse_proxy app:3000
+}

@@ -1,0 +1,5 @@
+# 部署脚本在 Linux 上执行，强制 LF 换行
+*.sh text eol=lf
+Dockerfile text eol=lf
+deploy/* text eol=lf
+db/** text eol=lf

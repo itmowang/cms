@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Docker 部署：产出最小化的独立运行包（.next/standalone）
+  output: "standalone",
   poweredByHeader: false,
   compress: true,
   async rewrites() {

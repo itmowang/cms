@@ -1,0 +1,26 @@
+# 本地开发用 PostgreSQL（仅监听 127.0.0.1:5432）
+#   docker compose -f db/docker-compose.dev.yml up -d --wait
+#   bash db/migrate.sh --import db/seed.json -- -f db/docker-compose.dev.yml
+# .env.local：DATABASE_URL=postgres://menhu:menhu@127.0.0.1:5432/menhu
+name: menhu-cms-dev
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: menhu
+      POSTGRES_PASSWORD: menhu
+      POSTGRES_DB: menhu
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U menhu -d menhu"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:

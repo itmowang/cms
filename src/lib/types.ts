@@ -83,6 +83,7 @@ export interface SiteSettings {
   friendLinks: FriendLink[];
 }
 
+/** 旧版 db.json / db/seed.json 的结构（由 db/migrate.sh 导入 PostgreSQL） */
 export interface Database {
   settings: SiteSettings;
   channels: Channel[];

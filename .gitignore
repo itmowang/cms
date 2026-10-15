@@ -7,6 +7,10 @@ next-env.d.ts
 .env.local
 # 本地 MCP 配置含 token，不提交
 .kiro/settings/mcp.json
-# 运行时数据（首次启动自动生成种子数据）
+# 旧版 JSON 存储的运行时数据（现已迁移到 PostgreSQL）
 data/db.json
 data/*.tmp
+.tmp-test/
+# 部署：本地覆盖配置、下载的线上备份
+deploy/deploy.local.env
+backups/

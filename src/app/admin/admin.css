@@ -64,6 +64,20 @@
 .md-tabs button[aria-selected="true"] { background: #fff; color: #c93a66; font-weight: 600; }
 .md-tabs .hint { margin-left: auto; }
 .md-preview { border: 1px solid #d9d9d9; padding: 16px 20px; min-height: 400px; }
+.md-preview img { max-width: 100%; height: auto; }
+.md-tabs .md-tool { margin-left: 8px; border-bottom: 1px solid #d9d9d9; border-radius: 4px; padding: 4px 12px; background: #fff; }
+.md-tabs .md-tool:hover:not(:disabled) { border-color: #c93a66; color: #c93a66; }
+.md-tabs .md-tool:disabled { opacity: .5; cursor: not-allowed; }
+.md-editor textarea.dragging { border: 2px dashed #c93a66; background: #fff5f8; }
+.md-status { min-height: 20px; margin-top: 4px; font-size: 12px; color: #c93a66; display: flex; gap: 12px; }
+.md-error, .form .md-error { color: #cf1322; font-size: 12px; margin: 4px 0 0; }
+
+.cover-input { margin-bottom: 14px; }
+.cover-input > label { display: block; color: #555; font-size: 13px; margin-bottom: 4px; }
+.cover-row { display: flex; gap: 6px; }
+.cover-row input { flex: 1; min-width: 0; padding: 7px 10px; border: 1px solid #d9d9d9; border-radius: 4px; font: inherit; font-size: 14px; }
+.cover-preview { margin-top: 8px; }
+.cover-preview img { display: block; width: 100%; max-height: 180px; object-fit: cover; border-radius: 4px; border: 1px solid #f0f0f0; margin-bottom: 4px; }
 
 .login { min-height: 100vh; display: grid; place-items: center; background: linear-gradient(135deg, #ff8fb1, #4a1d2f); }
 .login-box { background: #fff; padding: 32px; width: 360px; border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,.2); }

@@ -23,6 +23,10 @@ NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmjs.org}"
 DOCKER_MIRROR="${DOCKER_MIRROR:-}"
 DEFAULT_SITE_URL="${DEFAULT_SITE_URL:-http://localhost}"
 DB_PORT="${DB_PORT:-5432}"
+# 构建内存上限（1.6G 小机器：给数据库、线上应用、系统留出约 500MB）
+BUILD_MEMORY="${BUILD_MEMORY:-1100m}"
+BUILD_MEMORY_SWAP="${BUILD_MEMORY_SWAP:-2200m}" # 内存 + swap 总上限
+BUILDER="${BUILDER:-menhu-builder}"
 IMAGE_NAME="${IMAGE_NAME:-menhu-cms}"
 APP_UID=1000 # 镜像内 node 用户
 
@@ -82,8 +86,9 @@ ensure_swap() {
 }
 
 ensure_layout() {
-  mkdir -p "$APP_DIR"/{data,pgdata,backups,releases}
-  chown "$APP_UID:$APP_UID" "$APP_DIR/data"
+  mkdir -p "$APP_DIR"/{data,pgdata,uploads,backups,releases}
+  chown "$APP_UID:$APP_UID" "$APP_DIR/data" "$APP_DIR/uploads"
+  chmod 755 "$APP_DIR/uploads"
   chmod 750 "$APP_DIR/data" "$APP_DIR/backups"
   chmod 700 "$APP_DIR/pgdata"
 
@@ -171,6 +176,15 @@ backup_db() {
   trim_backups 'pg-*.dump'
 }
 
+# 上传图片只增不改（文件名是内容哈希），部署不会动它；手动备份时打包一份，保留最近 3 份
+backup_uploads() {
+  [ -d "$APP_DIR/uploads" ] && [ -n "$(ls -A "$APP_DIR/uploads" 2>/dev/null)" ] || { log "暂无上传图片，跳过"; return 0; }
+  local out="$APP_DIR/backups/uploads-$(date +%Y%m%d-%H%M%S).tar.gz"
+  tar -czf "$out" -C "$APP_DIR" uploads
+  log "已备份上传图片 → $out（$(du -h "$out" | cut -f1)）"
+  ls -1t "$APP_DIR"/backups/uploads-*.tar.gz 2>/dev/null | tail -n +4 | xargs -r rm -f || true
+}
+
 backup_json() {
   local f="$APP_DIR/data/db.json" out
   [ -f "$f" ] || return 0
@@ -204,6 +218,25 @@ switch_to() {
   compose up -d --remove-orphans
 }
 
+# 独立的构建容器（buildx docker-container 驱动）：可以给整个构建过程设内存上限，
+# 内存不够时只会在容器内 OOM、构建失败，不会拖垮整台服务器。
+# 使用宿主机网络，构建期预渲染才能连到 127.0.0.1 上的数据库。
+ensure_builder() {
+  local want="memory=${BUILD_MEMORY},memory-swap=${BUILD_MEMORY_SWAP}"
+  if docker buildx inspect "$BUILDER" >/dev/null 2>&1; then
+    # 内存参数改了就重建构建器（构建缓存在 volume 中，会保留）
+    [ "$(cat "$APP_DIR/.builder_opts" 2>/dev/null)" = "$want" ] && return 0
+    docker buildx rm --keep-state "$BUILDER" >/dev/null 2>&1 || true
+  fi
+  log "创建构建器 $BUILDER（$want）..."
+  docker buildx create --name "$BUILDER" --driver docker-container \
+    --driver-opt "network=host" \
+    --driver-opt "memory=${BUILD_MEMORY}" \
+    --driver-opt "memory-swap=${BUILD_MEMORY_SWAP}" \
+    --buildkitd-flags "--allow-insecure-entitlement network.host" >/dev/null
+  echo "$want" > "$APP_DIR/.builder_opts"
+}
+
 reload_caddy() {
   compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 \
     || compose restart caddy >/dev/null
@@ -219,7 +252,8 @@ cleanup() {
     [ "$t" = "$keep_cur" ] || [ "$t" = "$keep_prev" ] || docker rmi "$IMAGE_NAME:$t" >/dev/null 2>&1 || true
   done
   docker image prune -f >/dev/null 2>&1 || true
-  docker builder prune -f --filter until=168h >/dev/null 2>&1 || true
+  docker buildx prune --builder "$BUILDER" -f --filter until=168h >/dev/null 2>&1 || true
+  docker buildx stop "$BUILDER" >/dev/null 2>&1 || true
 }
 
 # ---------------------------------------------------------------------------
@@ -268,16 +302,24 @@ cmd_deploy() {
 
   local site_url
   site_url="$(env_get NEXT_PUBLIC_SITE_URL)"
-  log "构建镜像 $IMAGE_NAME:$tag（站点地址 ${site_url:-未设置}）..."
-  # 构建期间旧容器照常运行；构建失败直接退出，线上不受影响
+  ensure_builder
+  # 停掉构建器可中断上一次残留的构建任务（例如 SSH 断开后仍在后台跑的构建），避免多个构建叠加占满内存
+  docker buildx stop "$BUILDER" >/dev/null 2>&1 || true
+  log "构建镜像 $IMAGE_NAME:$tag（站点地址 ${site_url:-未设置}，构建内存上限 $BUILD_MEMORY + swap）..."
+  # 构建期间旧容器照常运行；构建失败（包括超出内存上限）直接退出，线上不受影响
   BUILD_DATABASE_URL="postgres://menhu:$(env_get PG_PASSWORD)@127.0.0.1:${DB_PORT}/menhu" \
-  docker build \
+  docker buildx build \
+      --builder "$BUILDER" \
+      --load \
+      --progress plain \
+      --allow network.host \
       --network host \
       --secret id=database_url,env=BUILD_DATABASE_URL \
       --build-arg "NEXT_PUBLIC_SITE_URL=${site_url}" \
       --build-arg "NPM_REGISTRY=${NPM_REGISTRY}" \
       -t "$IMAGE_NAME:$tag" "$release" \
-    || die "镜像构建失败，线上服务未做任何改动"
+    || { docker buildx stop "$BUILDER" >/dev/null 2>&1 || true; die "镜像构建失败，线上服务未做任何改动"; }
+  docker buildx stop "$BUILDER" >/dev/null 2>&1 || true # 构建完释放构建器内存
 
   if $json_sync; then
     # 构建期间旧版本可能仍有写入（阅读数、后台编辑）：停掉旧服务后完整同步一次
@@ -333,16 +375,25 @@ cmd_status() {
   echo "上一版本：$(previous_tag)"
   compose ps
   if db_has_schema; then
-    echo; echo "数据库：$(psql_db -c "SELECT format('%s 个频道，%s 篇文章，库大小 %s', (SELECT count(*) FROM channels), (SELECT count(*) FROM articles), pg_size_pretty(pg_database_size('menhu')))")"
+    echo; echo "上传图片：$(find "$APP_DIR/uploads" -type f 2>/dev/null | wc -l) 张，$(du -sh "$APP_DIR/uploads" 2>/dev/null | cut -f1)"
+    echo "数据库：$(psql_db -c "SELECT format('%s 个频道，%s 篇文章，库大小 %s', (SELECT count(*) FROM channels), (SELECT count(*) FROM articles), pg_size_pretty(pg_database_size('menhu')))")"
   fi
   echo; echo "最近备份："
   ls -1t "$APP_DIR"/backups/ 2>/dev/null | head -n 5 || true
 }
 
+# 同一时间只允许一个部署 / 回滚在跑（SSH 断开后旧进程可能仍在运行）
+with_lock() {
+  mkdir -p "$APP_DIR"
+  exec 9>"$APP_DIR/.deploy.lock"
+  flock -n 9 || die "已有部署正在进行（$APP_DIR/.deploy.lock），请等待完成后再试"
+  "$@"
+}
+
 case "${1:-}" in
-  deploy)   shift; cmd_deploy "$@" ;;
-  rollback) cmd_rollback ;;
-  backup)   backup_db manual ;;
+  deploy)   shift; with_lock cmd_deploy "$@" ;;
+  rollback) with_lock cmd_rollback ;;
+  backup)   backup_db manual; backup_uploads ;;
   status)   cmd_status ;;
   logs)     compose logs --tail "${2:-200}" -f app ;;
   *) echo "用法：remote.sh deploy <tag> <src> | rollback | backup | status | logs [n]"; exit 1 ;;

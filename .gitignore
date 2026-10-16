@@ -14,3 +14,5 @@ data/*.tmp
 # 部署：本地覆盖配置、下载的线上备份
 deploy/deploy.local.env
 backups/
+# 上传的图片（线上在服务器 /opt/menhu-cms/uploads）
+/uploads/

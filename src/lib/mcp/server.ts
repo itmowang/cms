@@ -3,6 +3,7 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mc
 import { z } from "zod";
 import { articleToMarkdown } from "@/lib/feed";
 import { pushUrls } from "@/lib/push";
+import { decodeBase64Image, fetchRemoteImage, saveImage, UploadError } from "@/lib/uploads";
 import * as repo from "@/lib/repo";
 import * as svc from "@/lib/services";
 import type { Article, Channel } from "@/lib/types";
@@ -28,7 +29,7 @@ function safe<A>(fn: (args: A) => Promise<ToolResult>) {
     try {
       return await fn(args);
     } catch (e) {
-      if (e instanceof svc.ValidationError) return fail(`操作失败：${e.message}`);
+      if (e instanceof svc.ValidationError || e instanceof UploadError) return fail(`操作失败：${e.message}`);
       console.error("[mcp] tool error", e);
       return fail(`服务器内部错误：${(e as Error).message}`);
     }
@@ -71,7 +72,7 @@ const articleFieldShape = {
   channelId: z.number().int().positive().describe("频道 ID，用 list_channels 获取"),
   summary: z.string().max(500).optional().describe("摘要，80-150 字为佳；用作 description 与 AI 摘要"),
   content: z.string().max(200_000).optional().describe("正文，Markdown 格式（不支持原始 HTML）"),
-  cover: z.string().max(500).optional().describe("封面图 URL，http(s):// 或站内 / 开头"),
+  cover: z.string().max(500).optional().describe("封面图地址，优先使用 upload_image 返回的站内 path（/uploads/...）"),
   author: z.string().max(50).optional(),
   source: z.string().max(50).optional().describe("来源，如：本站、某某美食博主"),
   tags: z.array(z.string().max(20)).max(10).optional().describe("标签，最多 10 个，如：快手菜、下饭菜、鸡蛋"),
@@ -123,7 +124,8 @@ export function createMcpServer(scope: McpScope): McpServer {
         "内容以菜谱为主：频道 = 菜谱分类（家常菜、烘焙、甜品等），文章 = 菜谱，菜谱的食材、步骤、时长、难度在 recipe 字段中。\n" +
         "常用流程：list_channels 获取分类 → search_articles（支持按菜名或食材搜索）/ list_articles → get_article 读完整菜谱。" +
         (scope === "admin"
-          ? "\n写入：create_article 默认存为草稿，确认无误后用 set_article_status 发布。发布会自动刷新静态页并推送搜索引擎。删除操作不可恢复，执行前请与用户确认。"
+          ? "\n写入：create_article 默认存为草稿，确认无误后用 set_article_status 发布。发布会自动刷新静态页并推送搜索引擎。删除操作不可恢复，执行前请与用户确认。" +
+            "\n图片：先用 upload_image（传图片 url 或 base64 data）上传到本站，再把返回的 path 填入 cover，或把返回的 markdown 插入 content。不要直接引用外站图片（会失效、拖慢页面）。"
           : ""),
     },
   );
@@ -321,7 +323,8 @@ export function createMcpServer(scope: McpScope): McpServer {
               "8. 给出 3-5 个标签（如：快手菜、下饭菜、主要食材名）；",
               "9. 涉及食品安全的地方（如生熟分开、肉类熟透）要提醒，不要编造营养功效。",
               isAdmin
-                ? "\n完成后先调用 list_channels 确认 channelId，再调用 create_article 以草稿（status=draft）保存，并把文章 ID 告诉我。"
+                ? "\n如果我提供了成品图或步骤图（链接或图片文件），先逐张调用 upload_image 上传到本站：第一张成品图的 path 填入 cover，其余图片的 markdown 插入 content 的合适位置。不要编造图片地址。" +
+                  "\n完成后先调用 list_channels 确认 channelId，再调用 create_article 以草稿（status=draft）保存，并把文章 ID 告诉我。"
                 : "",
             ].join("\n"),
           },
@@ -401,6 +404,39 @@ export function createMcpServer(scope: McpScope): McpServer {
     safe(async ({ id, status, publishedAt }: { id: number; status: Article["status"]; publishedAt?: string }) => {
       const r = await svc.upsertArticle(id, { status, ...(publishedAt ? { publishedAt } : {}) });
       return ok({ message: status === "published" ? "已发布" : "已撤回为草稿", id, publishedAt: r.article.publishedAt, url: r.url, push: r.push });
+    }),
+  );
+
+  server.registerTool(
+    "upload_image",
+    {
+      title: "上传图片",
+      description:
+        "把图片上传到本站，用作文章封面（cover）或正文插图。二选一：url（下载远程 http(s) 图片）或 data（base64 / data:image/...;base64,...）。" +
+        "支持 JPG、PNG、WebP、GIF、AVIF，最大 10MB；会自动转正方向、去掉 EXIF/GPS、最长边缩到 2000px 并转为 WebP（GIF 保留动画）。" +
+        "返回 path（填入 cover）和 markdown（插入 content）。相同图片重复上传返回同一地址",
+      inputSchema: {
+        url: z.string().url().max(2000).optional().describe("远程图片地址（http/https，不能是内网地址）"),
+        data: z.string().max(14_500_000).optional().describe("图片 base64 内容，或 data:image/png;base64,... 格式"),
+        alt: z.string().max(60).optional().describe("图片说明（alt 文本，利于 SEO 和无障碍），如：糖醋排骨成品图"),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    safe(async ({ url, data, alt }: { url?: string; data?: string; alt?: string }) => {
+      if (!!url === !!data) return fail("url 和 data 必须且只能传一个");
+      const buf = url ? await fetchRemoteImage(url) : decodeBase64Image(data!);
+      const saved = await saveImage(buf);
+      const text = (alt || "图片").replace(/[[\]]/g, "");
+      return ok({
+        message: "已上传",
+        path: saved.path,
+        url: absUrl(saved.path),
+        markdown: `![${text}](${saved.path})`,
+        width: saved.width,
+        height: saved.height,
+        bytes: saved.bytes,
+        type: saved.type,
+      });
     }),
   );
 

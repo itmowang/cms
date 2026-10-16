@@ -1,6 +1,7 @@
 import { saveArticleAction } from "@/app/admin/actions";
 import type { Article, Channel } from "@/lib/types";
 import { DIFFICULTIES, ingredientsToText } from "@/lib/recipe";
+import { CoverInput } from "./CoverInput";
 import { MarkdownEditor } from "./MarkdownEditor";
 
 /** ISO -> datetime-local（北京时间） */
@@ -96,10 +97,7 @@ export function ArticleForm({ article, channels }: { article?: Article; channels
             标签（逗号或空格分隔）
             <input name="tags" defaultValue={a?.tags.join(",")} maxLength={200} />
           </label>
-          <label>
-            封面图 URL
-            <input name="cover" defaultValue={a?.cover} placeholder="https://... 或 /uploads/..." maxLength={500} />
-          </label>
+          <CoverInput name="cover" defaultValue={a?.cover} />
           <label>
             作者
             <input name="author" defaultValue={a?.author ?? "粉厨小编"} maxLength={50} />

@@ -52,6 +52,8 @@ services:
       PORT: "3000"
       DATABASE_URL: postgres://menhu:${PG_PASSWORD}@db:5432/menhu
     volumes:
+      # 上传的图片：宿主机目录，升级 / 重建容器都不会动它
+      - ./uploads:/app/uploads
       # 旧版 JSON 存储目录：新版本不再使用，保留挂载以便回滚到 JSON 版本时数据仍在
       - ./data:/app/data
     ports:
@@ -75,6 +77,7 @@ services:
       - "${HTTPS_PORT:-443}:443/udp"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./uploads:/srv/uploads:ro
       - caddy_data:/data
       - caddy_config:/config
     logging:

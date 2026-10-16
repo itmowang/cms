@@ -8,6 +8,7 @@ out
 *.tsbuildinfo
 data
 pgdata
+uploads
 backups
 .tmp-test
 deploy/deploy.local.env

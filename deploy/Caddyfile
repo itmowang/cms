@@ -5,5 +5,15 @@
 	@alias expression `"{$PRIMARY_HOST}" != "" && {host} != "{$PRIMARY_HOST}"`
 	redir @alias https://{$PRIMARY_HOST}{uri} 308
 
-	reverse_proxy app:3000
+	# 上传的图片：Caddy 直接读文件返回，不经过 Node；文件名是内容哈希，可永久缓存
+	handle /uploads/* {
+		root * /srv
+		header Cache-Control "public, max-age=31536000, immutable"
+		header X-Content-Type-Options nosniff
+		file_server
+	}
+
+	handle {
+		reverse_proxy app:3000
+	}
 }

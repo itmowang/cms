@@ -15,7 +15,7 @@ export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3
 
 /** 频道 slug 不能占用的保留目录 */
 export const RESERVED_SLUGS = new Set([
-  "admin", "api", "tag", "search", "_next", "rss.xml", "sitemap.xml", "robots.txt",
+  "admin", "api", "tag", "search", "uploads", "_next", "rss.xml", "sitemap.xml", "robots.txt",
   "llms.txt", "llms-full.txt", "news-sitemap.xml", "favicon.ico", "indexnow-key.txt", "icon.svg", "logo.svg",
 ]);
 

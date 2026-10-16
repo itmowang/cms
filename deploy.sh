@@ -73,6 +73,7 @@ cmd_deploy() {
     --exclude=./.kiro \
     --exclude=./data \
     --exclude=./backups \
+    --exclude=./uploads \
     --exclude=./.tmp-test \
     --exclude='./.env*' \
     --exclude='*.tsbuildinfo' \
